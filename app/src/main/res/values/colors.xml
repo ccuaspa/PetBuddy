@@ -2,4 +2,8 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Nuevos colores de la marca PetBuddy -->
+    <color name="petbuddy_primary">#FFC107</color> <!-- Un amarillo cálido y amigable -->
+    <color name="petbuddy_primary_dark">#FFA000</color> <!-- Un tono más oscuro para la barra de estado -->
+    <color name="petbuddy_accent">#4CAF50</color> <!-- Un verde para acentuar, que recuerda a la naturaleza -->
 </resources>

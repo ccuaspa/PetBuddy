@@ -271,7 +271,7 @@ fun HealthScreen(
     onDeleteEvent: (HealthEvent) -> Unit
 ) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Historial de Salud") }) },
+        topBar = { TopAppBar(title = { Text("PetBuddy - Historial de Salud") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { navController.navigate("add_edit_health_event/null") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir evento de salud")
@@ -319,7 +319,7 @@ fun AddEditHealthEventScreen(
     var title by remember { mutableStateOf(eventToEdit?.title ?: "") }
     var date by remember { mutableStateOf(eventToEdit?.date ?: "") }
     var type by remember { mutableStateOf(eventToEdit?.type ?: "") }
-    val screenTitle = if (eventToEdit != null) "Editar Evento" else "Añadir Evento de Salud"
+    val screenTitle = if (eventToEdit != null) "PetBuddy - Editar Evento" else "PetBuddy - Añadir Evento de Salud"
 
     Scaffold(topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) }) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -349,7 +349,7 @@ fun DiaryScreen(
     onDeleteEntry: (DiaryEntry) -> Unit
 ) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Diario de Comportamiento") }) },
+        topBar = { TopAppBar(title = { Text("PetBuddy - Diario de Comportamiento") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { navController.navigate("add_edit_diary_entry/null") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir entrada al diario")
@@ -406,7 +406,7 @@ fun AddEditDiaryEntryScreen(
     var appetite by remember { mutableStateOf(entryToEdit?.appetite ?: "") }
     var energyLevel by remember { mutableStateOf(entryToEdit?.energyLevel ?: "") }
     var notes by remember { mutableStateOf(entryToEdit?.notes ?: "") }
-    val screenTitle = if (entryToEdit != null) "Editar Entrada" else "Nueva Entrada del Diario"
+    val screenTitle = if (entryToEdit != null) "PetBuddy - Editar Entrada" else "PetBuddy - Nueva Entrada del Diario"
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) }
@@ -440,7 +440,7 @@ fun WalkDiaryScreen(
     onDeleteEntry: (WalkEntry) -> Unit
 ) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Diario de Paseos") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) },
+        topBar = { TopAppBar(title = { Text("PetBuddy - Diario de Paseos") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { navController.navigate("add_edit_walk_entry/null") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir registro de paseo")
@@ -490,7 +490,7 @@ fun AddEditWalkEntryScreen(
     var duration by remember { mutableStateOf(walkToEdit?.duration ?: "") }
     var mood by remember { mutableStateOf(walkToEdit?.mood ?: "") }
     var energyLevel by remember { mutableStateOf(walkToEdit?.energyLevel ?: "") }
-    val screenTitle = if (walkToEdit != null) "Editar Registro" else "Nuevo Registro de Paseo"
+    val screenTitle = if (walkToEdit != null) "PetBuddy - Editar Registro" else "PetBuddy - Nuevo Registro de Paseo"
 
     Scaffold(
         topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) }
@@ -579,7 +579,7 @@ fun PetsScreen(
     onDeletePet: (Pet) -> Unit
 ) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Mis Mascotas") }) },
+        topBar = { TopAppBar(title = { Text("PetBuddy - Mis Mascotas") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { navController.navigate("add_edit_pet_screen/null") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir nueva mascota")
@@ -654,7 +654,7 @@ fun AddEditPetScreen(
     var petAge by remember { mutableStateOf(petToEdit?.age?.toString() ?: "") }
     var petWeight by remember { mutableStateOf(petToEdit?.weight?.toString() ?: "") }
     val isEditing = petToEdit != null
-    val screenTitle = if (isEditing) "Editar Perfil" else "Crea el perfil de tu amigo"
+    val screenTitle = if (isEditing) "PetBuddy - Editar Perfil" else "PetBuddy - Crea el perfil de tu amigo"
 
     Scaffold(
         topBar = {
@@ -707,7 +707,7 @@ fun AddEditPetScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemindersScreen(navController: NavController, reminders: List<Reminder>, onUpdateReminder: (Reminder) -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("Configurar Recordatorios") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Volver") } }) }) { innerPadding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("PetBuddy - Configurar Recordatorios") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Volver") } }) }) { innerPadding ->
         LazyColumn(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item { Text("Activa o desactiva recordatorios para las rutinas de tu mascota.", style = MaterialTheme.typography.bodyMedium) }
             items(reminders) { reminder -> ReminderCard(reminder = reminder) { isEnabled -> onUpdateReminder(reminder.copy(enabled = isEnabled)) } }
