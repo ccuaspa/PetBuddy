@@ -1,22 +1,30 @@
 package co.edu.unal.petbuddy
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.annotation.Keep
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -27,54 +35,71 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import co.edu.unal.petbuddy.ui.theme.PetBuddyTheme
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import java.util.UUID
 
 // sealed class para definir las pantallas principales de nuestra app
-sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
+sealed class Screen(val route: String, val label: String, val icon: ImageVector? = null) {
+    object Login : Screen("login", "Login")
+    object SignUp : Screen("signup", "SignUp")
     object Dashboard : Screen("dashboard", "Inicio", Icons.Default.Home)
     object Health : Screen("health", "Salud", Icons.Default.Favorite)
     object Diary : Screen("diary", "Diario", Icons.Default.Edit)
-    object Pets : Screen("pets", "Mascotas", Icons.Default.List)
+    object Pets : Screen("pets", "Mascotas", Icons.AutoMirrored.Filled.List)
 }
 
-// Data classes para modelar nuestros datos
+// Data classes para modelar nuestros datos (con @Keep y valores por defecto para Firestore)
+@Keep
 data class Pet(
     val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val breed: String,
-    val age: Int,
-    val weight: Double
+    val name: String = "",
+    val breed: String = "",
+    val age: Int = 0,
+    val weight: Double = 0.0
 )
-// --- DATA CLASSES CON ID PARA CRUD ---
+
+@Keep
 data class HealthEvent(
     val id: String = UUID.randomUUID().toString(),
-    val title: String,
-    val date: String,
-    val type: String
+    val title: String = "",
+    val date: String = "",
+    val type: String = ""
 )
+
+@Keep
 data class DiaryEntry(
     val id: String = UUID.randomUUID().toString(),
-    val date: String,
-    val mood: String,
-    val appetite: String,
-    val energyLevel: String,
-    val notes: String
+    val date: String = "",
+    val mood: String = "",
+    val appetite: String = "",
+    val energyLevel: String = "",
+    val notes: String = ""
 )
+
+@Keep
 data class WalkEntry(
     val id: String = UUID.randomUUID().toString(),
-    val date: String,
-    val duration: String,
-    val mood: String,
-    val energyLevel: String
+    val date: String = "",
+    val duration: String = "",
+    val mood: String = "",
+    val energyLevel: String = ""
 )
-data class Reminder(val id: String, val title: String, var time: String, var enabled: Boolean)
+
+@Keep
+data class Reminder(val id: String = "", val title: String = "", var time: String = "", var enabled: Boolean = false)
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var auth: FirebaseAuth
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        auth = Firebase.auth
         setContent {
             PetBuddyTheme {
-                PetBuddyApp()
+                PetBuddyApp(auth = auth)
             }
         }
     }
@@ -82,31 +107,33 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PetBuddyApp() {
+fun PetBuddyApp(auth: FirebaseAuth, petViewModel: PetViewModel = viewModel()) {
     val navController = rememberNavController()
-    val bottomNavItems = listOf(Screen.Dashboard, Screen.Health, Screen.Diary, Screen.Pets)
+    val currentUser = auth.currentUser
 
-    // --- MANEJO DE ESTADO CENTRALIZADO ---
-    val pets = remember { mutableStateListOf<Pet>() }
-    var activePet by remember { mutableStateOf<Pet?>(null) }
+    LaunchedEffect(currentUser) {
+        if (currentUser != null) {
+            petViewModel.loadPets()
+        }
+    }
 
-// Datos de ejemplo
-    val healthEvents = remember { mutableStateListOf(
-        HealthEvent(title = "Vacuna Anual", date = "15/09/2025", type = "Vacuna")
-    ) }
-    val diaryEntries = remember { mutableStateListOf(
-        DiaryEntry(date = "09/10/2025", mood = "Feliz", appetite = "Bueno", energyLevel = "Activo", notes = "Jugó mucho con la pelota nueva.")
-    ) }
-    val walkEntries = remember { mutableStateListOf(
-        WalkEntry(date = "09/10/2025", duration = "30 min", mood = "Explorador", energyLevel = "Alta")
-    ) }
-    val reminders = remember { mutableStateListOf(Reminder(id = "meal1", title = "Desayuno", time = "08:00", enabled = true)) }
+    val pets by petViewModel.pets.collectAsState()
+    val activePet by petViewModel.activePet.collectAsState()
+    val healthEvents by petViewModel.healthEvents.collectAsState()
+    val diaryEntries by petViewModel.diaryEntries.collectAsState()
+    val walkEntries by petViewModel.walkEntries.collectAsState()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val showBottomBar = currentDestination?.route in bottomNavItems.map { it.route }
 
-    val startDestination = if (pets.isEmpty()) "add_edit_pet_screen" else Screen.Dashboard.route
+    val bottomNavItems = listOf(Screen.Dashboard, Screen.Health, Screen.Diary, Screen.Pets)
+    val showBottomBar = bottomNavItems.any { it.route == currentDestination?.route }
+
+    val startDestination = if (currentUser != null) {
+        Screen.Dashboard.route // Always start at dashboard if logged in
+    } else {
+        Screen.Login.route
+    }
 
     Scaffold(
         bottomBar = {
@@ -114,7 +141,7 @@ fun PetBuddyApp() {
                 NavigationBar {
                     bottomNavItems.forEach { screen ->
                         NavigationBarItem(
-                            icon = { Icon(screen.icon, contentDescription = screen.label) },
+                            icon = { Icon(screen.icon!!, contentDescription = screen.label) },
                             label = { Text(screen.label) },
                             selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                             onClick = {
@@ -130,20 +157,49 @@ fun PetBuddyApp() {
             }
         }
     ) { innerPadding ->
-        NavHost(navController, startDestination = startDestination, Modifier.padding(innerPadding)) {
-            composable(Screen.Dashboard.route) { DashboardScreen(navController = navController, pet = activePet) }
+        NavHost(navController = navController, startDestination = startDestination, modifier = Modifier.padding(innerPadding)) {
+            // --- AUTH SCREENS ---
+            composable(Screen.Login.route) {
+                LoginScreen(
+                    navController = navController,
+                    auth = auth,
+                    onLoginSuccess = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+            composable(Screen.SignUp.route) {
+                SignUpScreen(
+                    navController = navController,
+                    auth = auth,
+                    onSignUpSuccess = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.SignUp.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            // --- MAIN APP SCREENS ---
+            composable(Screen.Dashboard.route) { DashboardScreen(navController = navController, pet = activePet, petsAvailable = pets.isNotEmpty()) }
             composable(Screen.Health.route) {
                 HealthScreen(
                     navController = navController,
                     events = healthEvents,
-                    onDeleteEvent = { event -> healthEvents.remove(event) }
+                    onDeleteEvent = { event ->
+                        activePet?.let { petViewModel.deleteHealthEvent(it.id, event) }
+                    }
                 )
             }
             composable(Screen.Diary.route) {
                 DiaryScreen(
                     navController = navController,
                     entries = diaryEntries,
-                    onDeleteEntry = { entry -> diaryEntries.remove(entry) }
+                    onDeleteEntry = { entry ->
+                        activePet?.let { petViewModel.deleteDiaryEntry(it.id, entry) }
+                    }
                 )
             }
             composable(Screen.Pets.route) {
@@ -151,13 +207,8 @@ fun PetBuddyApp() {
                     navController = navController,
                     pets = pets,
                     activePet = activePet,
-                    onSetAsActive = { pet -> activePet = pet },
-                    onDeletePet = { pet ->
-                        pets.remove(pet)
-                        if (activePet?.id == pet.id) {
-                            activePet = pets.firstOrNull()
-                        }
-                    }
+                    onSetAsActive = { pet -> petViewModel.setActivePet(pet) },
+                    onDeletePet = { pet -> petViewModel.deletePet(pet) }
                 )
             }
 
@@ -172,24 +223,10 @@ fun PetBuddyApp() {
                     navController = navController,
                     petToEdit = petToEdit,
                     onPetSaved = { pet ->
-                        val index = pets.indexOfFirst { it.id == pet.id }
-                        if (index != -1) {
-                            pets[index] = pet // Actualizar
-                        } else {
-                            pets.add(pet) // Añadir nuevo
-                        }
-                        activePet = pet // La mascota guardada se vuelve la activa
+                        petViewModel.savePet(pet)
+                        navController.popBackStack()
                     }
                 )
-            }
-            composable(route = "add_edit_pet_screen") {
-                AddEditPetScreen(navController = navController, petToEdit = null) { pet ->
-                    pets.add(pet)
-                    activePet = pet
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo("add_edit_pet_screen") { inclusive = true }
-                    }
-                }
             }
 
             // --- RUTAS CRUD PARA SALUD ---
@@ -203,8 +240,7 @@ fun PetBuddyApp() {
                     navController = navController,
                     eventToEdit = eventToEdit
                 ) { event ->
-                    val index = healthEvents.indexOfFirst { it.id == event.id }
-                    if (index != -1) healthEvents[index] = event else healthEvents.add(event)
+                    activePet?.let { petViewModel.saveHealthEvent(it.id, event) }
                     navController.popBackStack()
                 }
             }
@@ -220,13 +256,21 @@ fun PetBuddyApp() {
                     navController = navController,
                     entryToEdit = entryToEdit
                 ) { entry ->
-                    val index = diaryEntries.indexOfFirst { it.id == entry.id }
-                    if (index != -1) diaryEntries[index] = entry else diaryEntries.add(entry)
+                    activePet?.let { petViewModel.saveDiaryEntry(it.id, entry) }
                     navController.popBackStack()
                 }
             }
 
             // --- RUTAS CRUD PARA DIARIO DE PASEOS ---
+            composable("walk_diary_screen") {
+                WalkDiaryScreen(
+                    navController = navController,
+                    entries = walkEntries,
+                    onDeleteEntry = { entry ->
+                        activePet?.let { petViewModel.deleteWalkEntry(it.id, entry) }
+                    }
+                )
+            }
             composable(
                 "add_edit_walk_entry/{walkId}",
                 arguments = listOf(navArgument("walkId") { type = NavType.StringType; nullable = true })
@@ -237,25 +281,128 @@ fun PetBuddyApp() {
                     navController = navController,
                     walkToEdit = walkToEdit
                 ) { walk ->
-                    val index = walkEntries.indexOfFirst { it.id == walk.id }
-                    if (index != -1) walkEntries[index] = walk else walkEntries.add(walk)
+                    activePet?.let { petViewModel.saveWalkEntry(it.id, walk) }
                     navController.popBackStack()
                 }
             }
-            composable("walk_diary_screen") {
-                WalkDiaryScreen(
-                    navController = navController,
-                    entries = walkEntries,
-                    onDeleteEntry = { entry -> walkEntries.remove(entry) }
-                )
-            }
+        }
+    }
+}
 
-            // --- OTRAS RUTAS ---
-            composable("reminders_screen") {
-                RemindersScreen(navController = navController, reminders = reminders) { updatedReminder ->
-                    val index = reminders.indexOfFirst { it.id == updatedReminder.id }; if (index != -1) reminders[index] = updatedReminder
+@Composable
+fun LoginScreen(
+    navController: NavController,
+    auth: FirebaseAuth,
+    onLoginSuccess: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Login", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                if (email.isNotBlank() && password.isNotBlank()) {
+                    auth.signInWithEmailAndPassword(email, password)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                onLoginSuccess()
+                            } else {
+                                Toast.makeText(context, "Authentication failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
                 }
-            }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Login")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = { navController.navigate(Screen.SignUp.route) }) {
+            Text("Don't have an account? Sign Up")
+        }
+    }
+}
+
+@Composable
+fun SignUpScreen(
+    navController: NavController,
+    auth: FirebaseAuth,
+    onSignUpSuccess: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Sign Up", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = {
+                if (email.isNotBlank() && password.isNotBlank()) {
+                    auth.createUserWithEmailAndPassword(email, password)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                onSignUpSuccess()
+                            } else {
+                                Toast.makeText(context, "Sign up failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Sign Up")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = { navController.navigate(Screen.Login.route) }) {
+            Text("Already have an account? Login")
         }
     }
 }
@@ -273,7 +420,7 @@ fun HealthScreen(
     Scaffold(
         topBar = { TopAppBar(title = { Text("PetBuddy - Historial de Salud") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("add_edit_health_event/null") }) {
+            FloatingActionButton(onClick = { navController.navigate("add_edit_health_event/new") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir evento de salud")
             }
         }
@@ -321,7 +468,7 @@ fun AddEditHealthEventScreen(
     var type by remember { mutableStateOf(eventToEdit?.type ?: "") }
     val screenTitle = if (eventToEdit != null) "PetBuddy - Editar Evento" else "PetBuddy - Añadir Evento de Salud"
 
-    Scaffold(topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) }) { innerPadding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } }) }) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Título del evento") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Fecha (DD/MM/AAAA)") }, modifier = Modifier.fillMaxWidth())
@@ -351,7 +498,7 @@ fun DiaryScreen(
     Scaffold(
         topBar = { TopAppBar(title = { Text("PetBuddy - Diario de Comportamiento") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("add_edit_diary_entry/null") }) {
+            FloatingActionButton(onClick = { navController.navigate("add_edit_diary_entry/new") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir entrada al diario")
             }
         }
@@ -409,7 +556,7 @@ fun AddEditDiaryEntryScreen(
     val screenTitle = if (entryToEdit != null) "PetBuddy - Editar Entrada" else "PetBuddy - Nueva Entrada del Diario"
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) }
+        topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } }) }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Fecha (DD/MM/AAAA)") }, modifier = Modifier.fillMaxWidth())
@@ -440,9 +587,9 @@ fun WalkDiaryScreen(
     onDeleteEntry: (WalkEntry) -> Unit
 ) {
     Scaffold(
-        topBar = { TopAppBar(title = { Text("PetBuddy - Diario de Paseos") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) },
+        topBar = { TopAppBar(title = { Text("PetBuddy - Diario de Paseos") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("add_edit_walk_entry/null") }) {
+            FloatingActionButton(onClick = { navController.navigate("add_edit_walk_entry/new") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir registro de paseo")
             }
         }
@@ -493,7 +640,7 @@ fun AddEditWalkEntryScreen(
     val screenTitle = if (walkToEdit != null) "PetBuddy - Editar Registro" else "PetBuddy - Nuevo Registro de Paseo"
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, "Volver") } }) }
+        topBar = { TopAppBar(title = { Text(screenTitle) }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } }) }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("Fecha (DD/MM/AAAA)") }, modifier = Modifier.fillMaxWidth())
@@ -516,14 +663,16 @@ fun AddEditWalkEntryScreen(
 // --- OTRAS PANTALLAS ---
 
 @Composable
-fun DashboardScreen(navController: NavController, pet: Pet?) {
+fun DashboardScreen(navController: NavController, pet: Pet?, petsAvailable: Boolean) {
     if (pet == null) {
         Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No hay ninguna mascota activa.", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+                Text(
+                    if (petsAvailable) "No hay ninguna mascota activa." else "No tienes mascotas registradas.",
+                    style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { navController.navigate(Screen.Pets.route) }) {
-                    Text("Seleccionar una mascota")
+                    Text(if (petsAvailable) "Seleccionar una mascota" else "Añadir una mascota")
                 }
             }
         }
@@ -555,17 +704,6 @@ fun DashboardScreen(navController: NavController, pet: Pet?) {
                 }
             }
         }
-        item {
-            Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Recordatorios", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "Configura alarmas para comidas y paseos.")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { navController.navigate("reminders_screen") }, modifier = Modifier.align(Alignment.End)) { Text("Configurar") }
-                }
-            }
-        }
     }
 }
 
@@ -581,7 +719,7 @@ fun PetsScreen(
     Scaffold(
         topBar = { TopAppBar(title = { Text("PetBuddy - Mis Mascotas") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { navController.navigate("add_edit_pet_screen/null") }) {
+            FloatingActionButton(onClick = { navController.navigate("add_edit_pet_screen/new") }) {
                 Icon(Icons.Default.Add, contentDescription = "Añadir nueva mascota")
             }
         }
@@ -663,7 +801,7 @@ fun AddEditPetScreen(
                 navigationIcon = {
                     if (navController.previousBackStackEntry != null) {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.ArrowBack, "Volver")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
                         }
                     }
                 }
@@ -692,35 +830,11 @@ fun AddEditPetScreen(
                         weight = petWeight.toDoubleOrNull() ?: 0.0
                     )
                     onPetSaved(updatedPet)
-                    if (navController.previousBackStackEntry != null) {
-                        navController.popBackStack()
-                    }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
                 Text(text = "Guardar Mascota")
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RemindersScreen(navController: NavController, reminders: List<Reminder>, onUpdateReminder: (Reminder) -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("PetBuddy - Configurar Recordatorios") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, contentDescription = "Volver") } }) }) { innerPadding ->
-        LazyColumn(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item { Text("Activa o desactiva recordatorios para las rutinas de tu mascota.", style = MaterialTheme.typography.bodyMedium) }
-            items(reminders) { reminder -> ReminderCard(reminder = reminder) { isEnabled -> onUpdateReminder(reminder.copy(enabled = isEnabled)) } }
-        }
-    }
-}
-
-@Composable
-fun ReminderCard(reminder: Reminder, onEnabledChange: (Boolean) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
-        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).height(56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${reminder.title} (${reminder.time})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Switch(checked = reminder.enabled, onCheckedChange = onEnabledChange)
         }
     }
 }
