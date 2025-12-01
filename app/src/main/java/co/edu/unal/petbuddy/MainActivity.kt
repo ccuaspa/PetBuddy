@@ -4,13 +4,15 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -45,9 +48,9 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector?
     object Login : Screen("login", "Login")
     object SignUp : Screen("signup", "SignUp")
     object Dashboard : Screen("dashboard", "Inicio", Icons.Default.Home)
-    object Health : Screen("health", "Salud", Icons.Default.Favorite)
-    object Diary : Screen("diary", "Diario", Icons.Default.Edit)
-    object Pets : Screen("pets", "Mascotas", Icons.AutoMirrored.Filled.List)
+    object Health : Screen("health", "Salud", Icons.Default.MedicalServices)
+    object Diary : Screen("diary", "Diario", Icons.AutoMirrored.Filled.MenuBook)
+    object Pets : Screen("pets", "Mascotas", Icons.Default.Pets)
 }
 
 @AndroidEntryPoint
@@ -77,6 +80,7 @@ fun PetBuddyApp(auth: FirebaseAuth, petViewModel: PetViewModel = viewModel()) {
     val healthEvents by petViewModel.healthEvents.collectAsState()
     val diaryEntries by petViewModel.diaryEntries.collectAsState()
     val walkEntries by petViewModel.walkEntries.collectAsState()
+    val reminders by petViewModel.reminders.collectAsState()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -138,7 +142,20 @@ fun PetBuddyApp(auth: FirebaseAuth, petViewModel: PetViewModel = viewModel()) {
             }
 
             // --- MAIN APP SCREENS ---
-            composable(Screen.Dashboard.route) { DashboardScreen(navController = navController, pet = activePet, petsAvailable = pets.isNotEmpty(), petViewModel = petViewModel) }
+            composable(Screen.Dashboard.route) {
+                DashboardScreen(
+                    navController = navController,
+                    pet = activePet,
+                    petsAvailable = pets.isNotEmpty(),
+                    petViewModel = petViewModel,
+                    onLogout = {
+                        auth.signOut()
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(Screen.Dashboard.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
             composable(Screen.Health.route) {
                 HealthScreen(
                     navController = navController,
@@ -240,6 +257,30 @@ fun PetBuddyApp(auth: FirebaseAuth, petViewModel: PetViewModel = viewModel()) {
                     navController.popBackStack()
                 }
             }
+
+            // --- RUTAS CRUD PARA RECORDATORIOS ---
+            composable("reminders_screen") {
+                RemindersScreen(
+                    navController = navController,
+                    reminders = reminders,
+                    onUpdateReminder = { reminder -> petViewModel.saveReminder(reminder) },
+                    onDeleteReminder = { reminder -> petViewModel.deleteReminder(reminder) }
+                )
+            }
+            composable(
+                "add_edit_reminder/{reminderId}",
+                arguments = listOf(navArgument("reminderId") { type = NavType.StringType; nullable = true })
+            ) { backStackEntry ->
+                val reminderId = backStackEntry.arguments?.getString("reminderId")
+                val reminderToEdit = reminders.find { it.id == reminderId }
+                AddEditReminderScreen(
+                    navController = navController,
+                    reminderToEdit = reminderToEdit
+                ) { reminder ->
+                    petViewModel.saveReminder(reminder)
+                    navController.popBackStack()
+                }
+            }
         }
     }
 }
@@ -261,6 +302,8 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Image(painter = painterResource(id = R.drawable.ic_logo), contentDescription = "Logo", modifier = Modifier.size(120.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("Login", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
@@ -320,6 +363,8 @@ fun SignUpScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Image(painter = painterResource(id = R.drawable.ic_logo), contentDescription = "Logo", modifier = Modifier.size(120.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("Sign Up", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
@@ -617,45 +662,63 @@ fun AddEditWalkEntryScreen(
 
 // --- OTRAS PANTALLAS ---
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(navController: NavController, pet: Pet?, petsAvailable: Boolean, petViewModel: PetViewModel) {
-    if (pet == null) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    if (petsAvailable) "No hay ninguna mascota activa." else "No tienes mascotas registradas.",
-                    style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = { navController.navigate(Screen.Pets.route) }) {
-                    Text(if (petsAvailable) "Seleccionar una mascota" else "Añadir una mascota")
+fun DashboardScreen(navController: NavController, pet: Pet?, petsAvailable: Boolean, petViewModel: PetViewModel, onLogout: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("PetBuddy") },
+                actions = {
+                    IconButton(onClick = { navController.navigate("reminders_screen") }) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Recordatorios")
+                    }
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        if (pet == null) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        if (petsAvailable) "No hay ninguna mascota activa." else "No tienes mascotas registradas.",
+                        style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { navController.navigate(Screen.Pets.route) }) {
+                        Text(if (petsAvailable) "Seleccionar una mascota" else "Añadir una mascota")
+                    }
                 }
             }
+            return@Scaffold
         }
-        return
-    }
 
-    val (walkRecommendation, playRecommendation) = petViewModel.getPetRecommendations(pet)
+        val (walkRecommendation, playRecommendation) = petViewModel.getPetRecommendations(pet)
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Text("¡Hola, ${pet.name}!", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(bottom = 8.dp)) }
-        item {
-            Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Actividad Diaria", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "Paseos recomendados: $walkRecommendation")
-                    Text(text = "Tiempo de juego: $playRecommendation")
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item { Text("¡Hola, ${pet.name}!", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(bottom = 8.dp)) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = "Actividad Diaria", style = MaterialTheme.typography.titleLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Paseos recomendados: $walkRecommendation")
+                        Text(text = "Tiempo de juego: $playRecommendation")
+                    }
                 }
             }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Bienestar Emocional", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "Registra el ánimo de tu mascota hoy.")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { navController.navigate(Screen.Diary.route) }, modifier = Modifier.align(Alignment.End)) { Text("Registrar") }
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = "Bienestar Emocional", style = MaterialTheme.typography.titleLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Registra el ánimo de tu mascota hoy.")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = { navController.navigate(Screen.Diary.route) }, modifier = Modifier.align(Alignment.End)) { Text("Registrar") }
+                    }
                 }
             }
         }
@@ -790,6 +853,81 @@ fun AddEditPetScreen(
             ) {
                 Text(text = "Guardar Mascota")
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RemindersScreen(
+    navController: NavController,
+    reminders: List<Reminder>,
+    onUpdateReminder: (Reminder) -> Unit,
+    onDeleteReminder: (Reminder) -> Unit
+) {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("PetBuddy - Configurar Recordatorios") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") } }) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { navController.navigate("add_edit_reminder/new") }) {
+                Icon(Icons.Default.Add, contentDescription = "Añadir recordatorio")
+            }
+        }
+    ) { innerPadding ->
+        LazyColumn(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item { Text("Activa o desactiva recordatorios para las rutinas de tu mascota.", style = MaterialTheme.typography.bodyMedium) }
+            items(reminders) { reminder ->
+                ReminderCard(
+                    reminder = reminder,
+                    onEnabledChange = { isEnabled -> onUpdateReminder(reminder.copy(enabled = isEnabled)) },
+                    onEdit = { navController.navigate("add_edit_reminder/${reminder.id}") },
+                    onDelete = { onDeleteReminder(reminder) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ReminderCard(
+    reminder: Reminder,
+    onEnabledChange: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+        Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${reminder.title} (${reminder.time})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Switch(checked = reminder.enabled, onCheckedChange = onEnabledChange)
+            IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Editar") }
+            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Eliminar") }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddEditReminderScreen(
+    navController: NavController,
+    reminderToEdit: Reminder?,
+    onSaveReminder: (Reminder) -> Unit
+) {
+    var title by remember { mutableStateOf(reminderToEdit?.title ?: "") }
+    var time by remember { mutableStateOf(reminderToEdit?.time ?: "") }
+
+    Scaffold(
+        topBar = { TopAppBar(title = { Text(if (reminderToEdit != null) "Editar Recordatorio" else "Nuevo Recordatorio") }, navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } }) }
+    ) { innerPadding ->
+        Column(modifier = Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Título") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = time, onValueChange = { time = it }, label = { Text("Hora (HH:mm)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = {
+                    val newReminder = Reminder(id = reminderToEdit?.id ?: UUID.randomUUID().toString(), title = title, time = time, enabled = reminderToEdit?.enabled ?: true)
+                    onSaveReminder(newReminder)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Guardar") }
         }
     }
 }

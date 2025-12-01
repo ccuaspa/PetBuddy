@@ -20,6 +20,7 @@ class PetViewModel @Inject constructor(
     val healthEvents: StateFlow<List<HealthEvent>> = repository.healthEvents
     val diaryEntries: StateFlow<List<DiaryEntry>> = repository.diaryEntries
     val walkEntries: StateFlow<List<WalkEntry>> = repository.walkEntries
+    val reminders: StateFlow<List<Reminder>> = repository.reminders
 
     fun getPetRecommendations(pet: Pet): Pair<String, String> {
         return getPetRecommendationsUseCase(pet)
@@ -33,7 +34,7 @@ class PetViewModel @Inject constructor(
         repository.deletePet(pet)
     }
 
-    fun setActivePet(pet: Pet) {
+    fun setActivePet(pet: Pet?) {
         repository.setActivePet(pet)
     }
 
@@ -59,5 +60,13 @@ class PetViewModel @Inject constructor(
 
     fun deleteWalkEntry(petId: String, entry: WalkEntry) {
         repository.deleteWalkEntry(petId, entry)
+    }
+
+    fun saveReminder(reminder: Reminder) {
+        repository.saveReminder(reminder)
+    }
+
+    fun deleteReminder(reminder: Reminder) {
+        repository.deleteReminder(reminder)
     }
 }
