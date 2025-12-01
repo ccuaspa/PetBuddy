@@ -4,8 +4,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.viewModels
-import androidx.annotation.Keep
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,10 +32,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import co.edu.unal.petbuddy.data.model.*
 import co.edu.unal.petbuddy.ui.theme.PetBuddyTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import dagger.hilt.android.AndroidEntryPoint
 import java.util.UUID
 
 // sealed class para definir las pantallas principales de nuestra app
@@ -50,46 +50,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector?
     object Pets : Screen("pets", "Mascotas", Icons.AutoMirrored.Filled.List)
 }
 
-// Data classes para modelar nuestros datos (con @Keep y valores por defecto para Firestore)
-@Keep
-data class Pet(
-    val id: String = UUID.randomUUID().toString(),
-    val name: String = "",
-    val breed: String = "",
-    val age: Int = 0,
-    val weight: Double = 0.0
-)
-
-@Keep
-data class HealthEvent(
-    val id: String = UUID.randomUUID().toString(),
-    val title: String = "",
-    val date: String = "",
-    val type: String = ""
-)
-
-@Keep
-data class DiaryEntry(
-    val id: String = UUID.randomUUID().toString(),
-    val date: String = "",
-    val mood: String = "",
-    val appetite: String = "",
-    val energyLevel: String = "",
-    val notes: String = ""
-)
-
-@Keep
-data class WalkEntry(
-    val id: String = UUID.randomUUID().toString(),
-    val date: String = "",
-    val duration: String = "",
-    val mood: String = "",
-    val energyLevel: String = ""
-)
-
-@Keep
-data class Reminder(val id: String = "", val title: String = "", var time: String = "", var enabled: Boolean = false)
-
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private lateinit var auth: FirebaseAuth
@@ -110,12 +71,6 @@ class MainActivity : ComponentActivity() {
 fun PetBuddyApp(auth: FirebaseAuth, petViewModel: PetViewModel = viewModel()) {
     val navController = rememberNavController()
     val currentUser = auth.currentUser
-
-    LaunchedEffect(currentUser) {
-        if (currentUser != null) {
-            petViewModel.loadPets()
-        }
-    }
 
     val pets by petViewModel.pets.collectAsState()
     val activePet by petViewModel.activePet.collectAsState()
@@ -183,7 +138,7 @@ fun PetBuddyApp(auth: FirebaseAuth, petViewModel: PetViewModel = viewModel()) {
             }
 
             // --- MAIN APP SCREENS ---
-            composable(Screen.Dashboard.route) { DashboardScreen(navController = navController, pet = activePet, petsAvailable = pets.isNotEmpty()) }
+            composable(Screen.Dashboard.route) { DashboardScreen(navController = navController, pet = activePet, petsAvailable = pets.isNotEmpty(), petViewModel = petViewModel) }
             composable(Screen.Health.route) {
                 HealthScreen(
                     navController = navController,
@@ -663,7 +618,7 @@ fun AddEditWalkEntryScreen(
 // --- OTRAS PANTALLAS ---
 
 @Composable
-fun DashboardScreen(navController: NavController, pet: Pet?, petsAvailable: Boolean) {
+fun DashboardScreen(navController: NavController, pet: Pet?, petsAvailable: Boolean, petViewModel: PetViewModel) {
     if (pet == null) {
         Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -679,7 +634,7 @@ fun DashboardScreen(navController: NavController, pet: Pet?, petsAvailable: Bool
         return
     }
 
-    val (walkRecommendation, playRecommendation) = getPetRecommendations(pet)
+    val (walkRecommendation, playRecommendation) = petViewModel.getPetRecommendations(pet)
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Text("¡Hola, ${pet.name}!", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(bottom = 8.dp)) }
@@ -837,18 +792,4 @@ fun AddEditPetScreen(
             }
         }
     }
-}
-
-fun getPetRecommendations(pet: Pet): Pair<String, String> {
-    val walkRecommendation = when {
-        pet.age < 1 -> "4 paseos cortos (15 min)"
-        pet.breed.contains("beagle", ignoreCase = true) || pet.breed.contains("border collie", ignoreCase = true) || pet.breed.contains("pastor", ignoreCase = true) -> "3 paseos largos y activos (40 min)"
-        pet.weight > 35 -> "2 paseos moderados (30 min)"
-        else -> "3 paseos (20 min cada uno)"
-    }
-    val playRecommendation = when {
-        pet.age < 2 -> "1 hora de juego interactivo"
-        else -> "45 minutos de juego"
-    }
-    return Pair(walkRecommendation, playRecommendation)
 }

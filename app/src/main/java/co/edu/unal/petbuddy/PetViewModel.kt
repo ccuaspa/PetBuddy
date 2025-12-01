@@ -1,117 +1,63 @@
 package co.edu.unal.petbuddy
 
 import androidx.lifecycle.ViewModel
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.flow.MutableStateFlow
+import co.edu.unal.petbuddy.data.PetRepository
+import co.edu.unal.petbuddy.data.model.*
+import co.edu.unal.petbuddy.domain.GetPetRecommendationsUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
+import javax.inject.Inject
 
-class PetViewModel : ViewModel() {
-    private val db = Firebase.firestore
-    private val auth = Firebase.auth
+@HiltViewModel
+class PetViewModel @Inject constructor(
+    private val repository: PetRepository,
+    private val getPetRecommendationsUseCase: GetPetRecommendationsUseCase
+) : ViewModel() {
 
-    private val _pets = MutableStateFlow<List<Pet>>(emptyList())
-    val pets: StateFlow<List<Pet>> = _pets
+    val pets: StateFlow<List<Pet>> = repository.pets
+    val activePet: StateFlow<Pet?> = repository.activePet
 
-    private val _activePet = MutableStateFlow<Pet?>(null)
-    val activePet: StateFlow<Pet?> = _activePet
+    val healthEvents: StateFlow<List<HealthEvent>> = repository.healthEvents
+    val diaryEntries: StateFlow<List<DiaryEntry>> = repository.diaryEntries
+    val walkEntries: StateFlow<List<WalkEntry>> = repository.walkEntries
 
-    private val _healthEvents = MutableStateFlow<List<HealthEvent>>(emptyList())
-    val healthEvents: StateFlow<List<HealthEvent>> = _healthEvents
-
-    private val _diaryEntries = MutableStateFlow<List<DiaryEntry>>(emptyList())
-    val diaryEntries: StateFlow<List<DiaryEntry>> = _diaryEntries
-
-    private val _walkEntries = MutableStateFlow<List<WalkEntry>>(emptyList())
-    val walkEntries: StateFlow<List<WalkEntry>> = _walkEntries
-
-    private val userId: String
-        get() = auth.currentUser?.uid ?: throw IllegalStateException("User not logged in")
-
-    fun loadPets() {
-        db.collection("users").document(userId).collection("pets")
-            .addSnapshotListener { snapshot, e ->
-                if (e != null) {
-                    // Handle error
-                    return@addSnapshotListener
-                }
-                snapshot?.let {
-                    val petList = it.toObjects(Pet::class.java)
-                    _pets.value = petList
-                    if (_activePet.value == null || !petList.contains(_activePet.value)) {
-                        _activePet.value = petList.firstOrNull()
-                    }
-                }
-            }
+    fun getPetRecommendations(pet: Pet): Pair<String, String> {
+        return getPetRecommendationsUseCase(pet)
     }
 
     fun savePet(pet: Pet) {
-        db.collection("users").document(userId).collection("pets").document(pet.id).set(pet)
+        repository.savePet(pet)
     }
 
     fun deletePet(pet: Pet) {
-        db.collection("users").document(userId).collection("pets").document(pet.id).delete()
+        repository.deletePet(pet)
     }
 
     fun setActivePet(pet: Pet) {
-        _activePet.value = pet
-        loadHealthEvents(pet.id)
-        loadDiaryEntries(pet.id)
-        loadWalkEntries(pet.id)
-    }
-
-    private fun loadHealthEvents(petId: String) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("healthEvents")
-            .addSnapshotListener { snapshot, e ->
-                if (e != null) return@addSnapshotListener
-                snapshot?.let {
-                    _healthEvents.value = it.toObjects(HealthEvent::class.java)
-                }
-            }
+        repository.setActivePet(pet)
     }
 
     fun saveHealthEvent(petId: String, event: HealthEvent) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("healthEvents").document(event.id).set(event)
+        repository.saveHealthEvent(petId, event)
     }
 
     fun deleteHealthEvent(petId: String, event: HealthEvent) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("healthEvents").document(event.id).delete()
-    }
-
-    private fun loadDiaryEntries(petId: String) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("diaryEntries")
-            .addSnapshotListener { snapshot, e ->
-                if (e != null) return@addSnapshotListener
-                snapshot?.let {
-                    _diaryEntries.value = it.toObjects(DiaryEntry::class.java)
-                }
-            }
+        repository.deleteHealthEvent(petId, event)
     }
 
     fun saveDiaryEntry(petId: String, entry: DiaryEntry) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("diaryEntries").document(entry.id).set(entry)
+        repository.saveDiaryEntry(petId, entry)
     }
 
     fun deleteDiaryEntry(petId: String, entry: DiaryEntry) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("diaryEntries").document(entry.id).delete()
-    }
-
-    private fun loadWalkEntries(petId: String) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("walkEntries")
-            .addSnapshotListener { snapshot, e ->
-                if (e != null) return@addSnapshotListener
-                snapshot?.let {
-                    _walkEntries.value = it.toObjects(WalkEntry::class.java)
-                }
-            }
+        repository.deleteDiaryEntry(petId, entry)
     }
 
     fun saveWalkEntry(petId: String, entry: WalkEntry) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("walkEntries").document(entry.id).set(entry)
+        repository.saveWalkEntry(petId, entry)
     }
 
     fun deleteWalkEntry(petId: String, entry: WalkEntry) {
-        db.collection("users").document(userId).collection("pets").document(petId).collection("walkEntries").document(entry.id).delete()
+        repository.deleteWalkEntry(petId, entry)
     }
 }
